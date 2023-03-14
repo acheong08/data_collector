@@ -26,7 +26,6 @@ func init() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer db.Close(context.Background())
 	rows := db.QueryRow(context.Background(), "select version()")
 	if err != nil {
 		log.Fatal(err)
@@ -37,9 +36,11 @@ func init() {
 		log.Fatal(err)
 	}
 	fmt.Printf("DB version=%s\n", version)
-
 	// Create the conversations table if it doesn't exist
-	_, err = db.Exec(context.Background(), `CREATE TABLE IF NOT EXISTS conversations ( id SERIAL PRIMARY KEY, user VARCHAR(255), messages JSONB )`)
+	_, err = db.Exec(context.Background(), `CREATE TABLE IF NOT EXISTS conversations ( id TEXT PRIMARY KEY, "user" VARCHAR(255), messages JSONB )`)
+	if err != nil {
+		log.Fatal(err)
+	}
 }
 
 func main() {
@@ -49,6 +50,7 @@ func main() {
 			"message": "pong",
 		})
 	})
+	r.POST("/collect", Collect)
 	r.Run() // listen and serve on
 }
 
@@ -61,7 +63,7 @@ func Collect(c *gin.Context) {
 		return
 	}
 	// Store the conversation in the database
-	_, err = db.Exec(context.Background(), `INSERT INTO conversations (id, user, messages) VALUES ($1, $2, $3)`, conversation.Id, conversation.User, conversation.Messages)
+	_, err = db.Exec(context.Background(), `INSERT INTO conversations (id, "user", messages) VALUES ($1, $2, $3)`, conversation.Id, conversation.User, conversation.Messages)
 	if err != nil {
 		c.JSON(500, gin.H{"error": err.Error()})
 		return
