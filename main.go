@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"log"
 	"os"
 	"regexp"
@@ -27,21 +26,6 @@ func init() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	rows := db.QueryRow(context.Background(), "select version()")
-	if err != nil {
-		log.Fatal(err)
-	}
-	var version string
-	err = rows.Scan(&version)
-	if err != nil {
-		log.Fatal(err)
-	}
-	fmt.Printf("DB version=%s\n", version)
-	// Create the conversations table if it doesn't exist
-	_, err = db.Exec(context.Background(), `CREATE TABLE IF NOT EXISTS conversations ( id TEXT PRIMARY KEY NOT NULL, "user" VARCHAR(255) NOT NULL, messages JSONB NOT NULL )`)
-	if err != nil {
-		log.Fatal(err)
-	}
 }
 
 func main() {
@@ -51,7 +35,8 @@ func main() {
 			"message": "pong",
 		})
 	})
-	r.POST("/collect", Collect)
+	r.POST("/analytics/new_convo", StartConversation)
+	r.POST("/analytics/add_message", AddMessage)
 	r.POST("/exit", func(c *gin.Context) {
 		// Check authentication
 		if c.Request.Header.Get("Authorization") != os.Getenv("AUTH") {
@@ -65,11 +50,22 @@ func main() {
 		// Stop the program
 		os.Exit(0)
 	})
+	r.POST("/reset", func(c *gin.Context) {
+		// Delete the conversations table if it exists
+		_, err = db.Exec(context.Background(), `DROP TABLE IF EXISTS conversations`)
+		// Create the conversations table if it doesn't exist
+		_, err = db.Exec(context.Background(), `CREATE TABLE IF NOT EXISTS conversations ( id TEXT PRIMARY KEY NOT NULL, "user" VARCHAR(255) NOT NULL, messages JSONB[] NOT NULL )`)
+		if err != nil {
+			log.Fatal(err)
+		}
+		c.JSON(200, gin.H{"message": "success"})
+
+	})
 	r.Run() // listen and serve on
 }
 
-// Collect is a handler which stores the conversation in the database
-func Collect(c *gin.Context) {
+// StartConversation is a handler which stores the conversation in the database
+func StartConversation(c *gin.Context) {
 	var conversation typings.Conversation
 	err := c.BindJSON(&conversation)
 	if err != nil {
@@ -81,6 +77,7 @@ func Collect(c *gin.Context) {
 		c.JSON(400, gin.H{"error": "Missing fields"})
 		return
 	}
+
 	// Store the conversation in the database
 	_, err = db.Exec(context.Background(), `INSERT INTO conversations (id, "user", messages) VALUES ($1, $2, $3)`, conversation.Id, conversation.User, conversation.Messages)
 	if err != nil {
@@ -91,6 +88,34 @@ func Collect(c *gin.Context) {
 			err_code = 409
 			err_string = "Conversation already exists"
 		}
+		c.JSON(err_code, gin.H{"error": err_string})
+		return
+	}
+	c.JSON(200, gin.H{"message": "success"})
+}
+
+type StandaloneMessage struct {
+	Message typings.Message `json:"message"`
+	ConvoId string          `json:"convo_id"`
+}
+
+func AddMessage(c *gin.Context) {
+	var standaloneMessage StandaloneMessage
+	err := c.BindJSON(&standaloneMessage)
+	if err != nil {
+		c.JSON(400, gin.H{"error": "Invalid JSON"})
+		return
+	}
+	// If any of the fields are empty, return an error
+	if standaloneMessage.ConvoId == "" || standaloneMessage.Message.Prompt == "" || standaloneMessage.Message.Response == "" {
+		c.JSON(400, gin.H{"error": "Missing fields"})
+		return
+	}
+	// Append the message to the conversation messages array
+	_, err = db.Exec(context.Background(), `UPDATE conversations SET messages = array_append(messages, $1) WHERE id = $2`, standaloneMessage.Message, standaloneMessage.ConvoId)
+	if err != nil {
+		err_code := 500
+		err_string := err.Error()
 		c.JSON(err_code, gin.H{"error": err_string})
 		return
 	}
