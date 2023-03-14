@@ -4,7 +4,6 @@ import (
 	"context"
 	"log"
 	"os"
-	"regexp"
 
 	typings "github.com/acheong08/data_collector/internal/typings"
 	gin "github.com/gin-gonic/gin"
@@ -27,6 +26,22 @@ func init() {
 		log.Fatal(err)
 	}
 }
+func adminMiddleware(c *gin.Context) {
+	// Get the auth token from the request header
+	authToken := c.GetHeader("Authorization")
+	if authToken == "" {
+		c.JSON(401, gin.H{"error": "Missing Authorization header"})
+		c.Abort()
+		return
+	}
+	// Check if the token is valid
+	if authToken != os.Getenv("AUTH_TOKEN") {
+		c.JSON(401, gin.H{"error": "Invalid Authorization token"})
+		c.Abort()
+		return
+	}
+	c.Next()
+}
 
 func main() {
 	r := gin.Default()
@@ -35,8 +50,7 @@ func main() {
 			"message": "pong",
 		})
 	})
-	r.POST("/analytics/new_convo", h_startConvo)
-	r.POST("/analytics/add_message", h_addMsg)
+	r.POST("/analytics/message", h_message)
 	r.POST("/exit", adminMiddleware, func(c *gin.Context) {
 		// Close the database connection
 		err = db.Close(context.Background())
@@ -60,77 +74,25 @@ func main() {
 	r.Run() // listen and serve on
 }
 
-func adminMiddleware(c *gin.Context) {
-	// Get the auth token from the request header
-	authToken := c.GetHeader("Authorization")
-	if authToken == "" {
-		c.JSON(401, gin.H{"error": "Missing Authorization header"})
-		c.Abort()
-		return
-	}
-	// Check if the token is valid
-	if authToken != os.Getenv("AUTH_TOKEN") {
-		c.JSON(401, gin.H{"error": "Invalid Authorization token"})
-		c.Abort()
-		return
-	}
-	c.Next()
-}
-
-// h_startConvo is a handler which stores the conversation in the database
-func h_startConvo(c *gin.Context) {
-	var conversation typings.Conversation
-	err := c.BindJSON(&conversation)
+// h_message is a handler which stores the conversation in the database
+func h_message(c *gin.Context) {
+	var msg_instance typings.MessageInstance
+	err := c.BindJSON(&msg_instance)
 	if err != nil {
 		c.JSON(400, gin.H{"error": "Invalid JSON"})
 		return
 	}
 	// If any of the fields are empty, return an error
-	if conversation.Id == "" || conversation.User == "" || len(conversation.Messages) == 0 {
+	if msg_instance.Id == "" || msg_instance.User == "" || msg_instance.Message == (typings.Message{}) {
 		c.JSON(400, gin.H{"error": "Missing fields"})
 		return
 	}
 
-	// Store the conversation in the database
-	_, err = db.Exec(context.Background(), `INSERT INTO conversations (id, "user", messages) VALUES ($1, $2, $3)`, conversation.Id, conversation.User, conversation.Messages)
+	// INSERT if the conversation doesn't exist, UPDATE and append new message if it does
+	_, err = db.Exec(context.Background(), `INSERT INTO conversations (id, "user", messages) VALUES ($1, $2, $3) ON CONFLICT (id) DO UPDATE SET messages = array_append(conversations.messages, $3)`, msg_instance.Id, msg_instance.User, msg_instance.Message)
 	if err != nil {
-		err_code := 500
-		err_string := err.Error()
-		// Regex check for duplicate key value violates unique constraint
-		if regexp.MustCompile(`duplicate key value violates unique constraint`).MatchString(err.Error()) {
-			err_code = 409
-			err_string = "Conversation already exists"
-		}
-		c.JSON(err_code, gin.H{"error": err_string})
-		return
+		c.JSON(500, gin.H{"error": err.Error()})
 	}
-	c.JSON(200, gin.H{"message": "success"})
-}
 
-type StandaloneMessage struct {
-	Message typings.Message `json:"message"`
-	ConvoId string          `json:"convo_id"`
-}
-
-func h_addMsg(c *gin.Context) {
-	var standaloneMessage StandaloneMessage
-	err := c.BindJSON(&standaloneMessage)
-	if err != nil {
-		c.JSON(400, gin.H{"error": "Invalid JSON"})
-		return
-	}
-	// If any of the fields are empty, return an error
-	if standaloneMessage.ConvoId == "" || standaloneMessage.Message.Prompt == "" || standaloneMessage.Message.Response == "" {
-		c.JSON(400, gin.H{"error": "Missing fields"})
-		return
-	}
-	// Append the message to the conversation messages array
-	_, err = db.Exec(context.Background(), `UPDATE conversations SET messages = array_append(messages, $1) WHERE id = $2`, standaloneMessage.Message, standaloneMessage.ConvoId)
-	if err != nil {
-		err_code := 500
-		err_string := err.Error()
-		c.JSON(err_code, gin.H{"error": err_string})
-		return
-	}
 	c.JSON(200, gin.H{"message": "success"})
 }

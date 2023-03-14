@@ -6,8 +6,8 @@ type Message struct {
 	ConvoId  string `json:"convo_id"`
 }
 
-type Conversation struct {
-	Messages []Message `json:"messages"`
-	Id       string    `json:"id"`
-	User     string    `json:"user"`
+type MessageInstance struct {
+	Message Message `json:"messages"`
+	Id      string  `json:"id"`
+	User    string  `json:"user"`
 }
