@@ -51,6 +51,19 @@ func main() {
 		})
 	})
 	r.POST("/collect", Collect)
+	r.POST("/exit", func(c *gin.Context) {
+		// Check authentication
+		if c.Request.Header.Get("Authorization") != os.Getenv("AUTH") {
+			return
+		}
+		// Close the database connection
+		err = db.Close(context.Background())
+		if err != nil {
+			log.Fatal(err)
+		}
+		// Stop the program
+		os.Exit(0)
+	})
 	r.Run() // listen and serve on
 }
 
