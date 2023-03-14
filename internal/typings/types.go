@@ -1,5 +1,9 @@
 package typings
 
+import (
+	_ "github.com/jackc/pgx/v5"
+)
+
 type Message struct {
 	Prompt   string `json:"prompt"`
 	Response string `json:"response"`
