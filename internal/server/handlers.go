@@ -67,7 +67,7 @@ func Reset(c *gin.Context) {
 		return
 	}
 	// Create the conversations table if it doesn't exist
-	_, err = db.Exec(context.Background(), `CREATE TABLE IF NOT EXISTS conversations ( id TEXT PRIMARY KEY NOT NULL, "user" VARCHAR(255) NOT NULL, messages JSONB[] NOT NULL )`)
+	_, err = db.Exec(context.Background(), `CREATE TABLE IF NOT EXISTS conversations ( id TEXT PRIMARY KEY NOT NULL, "user" VARCHAR(32) NOT NULL, messages JSONB[] NOT NULL )`)
 	if err != nil {
 		c.JSON(500, gin.H{"error": err.Error()})
 		return
