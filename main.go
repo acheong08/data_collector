@@ -35,13 +35,9 @@ func main() {
 			"message": "pong",
 		})
 	})
-	r.POST("/analytics/new_convo", StartConversation)
-	r.POST("/analytics/add_message", AddMessage)
-	r.POST("/exit", func(c *gin.Context) {
-		// Check authentication
-		if c.Request.Header.Get("Authorization") != os.Getenv("AUTH") {
-			return
-		}
+	r.POST("/analytics/new_convo", h_startConvo)
+	r.POST("/analytics/add_message", h_addMsg)
+	r.POST("/exit", adminMiddleware, func(c *gin.Context) {
 		// Close the database connection
 		err = db.Close(context.Background())
 		if err != nil {
@@ -50,7 +46,7 @@ func main() {
 		// Stop the program
 		os.Exit(0)
 	})
-	r.POST("/reset", func(c *gin.Context) {
+	r.POST("/reset", adminMiddleware, func(c *gin.Context) {
 		// Delete the conversations table if it exists
 		_, err = db.Exec(context.Background(), `DROP TABLE IF EXISTS conversations`)
 		// Create the conversations table if it doesn't exist
@@ -64,8 +60,25 @@ func main() {
 	r.Run() // listen and serve on
 }
 
-// StartConversation is a handler which stores the conversation in the database
-func StartConversation(c *gin.Context) {
+func adminMiddleware(c *gin.Context) {
+	// Get the auth token from the request header
+	authToken := c.GetHeader("Authorization")
+	if authToken == "" {
+		c.JSON(401, gin.H{"error": "Missing Authorization header"})
+		c.Abort()
+		return
+	}
+	// Check if the token is valid
+	if authToken != os.Getenv("AUTH_TOKEN") {
+		c.JSON(401, gin.H{"error": "Invalid Authorization token"})
+		c.Abort()
+		return
+	}
+	c.Next()
+}
+
+// h_startConvo is a handler which stores the conversation in the database
+func h_startConvo(c *gin.Context) {
 	var conversation typings.Conversation
 	err := c.BindJSON(&conversation)
 	if err != nil {
@@ -99,7 +112,7 @@ type StandaloneMessage struct {
 	ConvoId string          `json:"convo_id"`
 }
 
-func AddMessage(c *gin.Context) {
+func h_addMsg(c *gin.Context) {
 	var standaloneMessage StandaloneMessage
 	err := c.BindJSON(&standaloneMessage)
 	if err != nil {
