@@ -22,6 +22,13 @@ func init() {
 
 // h_message is a handler which stores the conversation in the database
 func Message(c *gin.Context) {
+	if db.IsClosed() {
+		db, err = pgx.Connect(context.Background(), os.Getenv("DATABASE_URL"))
+		if err != nil {
+			c.JSON(500, gin.H{"error": err.Error()})
+			return
+		}
+	}
 	var msg_instance typings.MessageInstance
 	err := c.BindJSON(&msg_instance)
 	if err != nil {
