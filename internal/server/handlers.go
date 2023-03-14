@@ -2,7 +2,6 @@ package server
 
 import (
 	"context"
-	"log"
 	"os"
 
 	"github.com/acheong08/data_collector/internal/typings"
@@ -10,27 +9,17 @@ import (
 	pgx "github.com/jackc/pgx/v5"
 )
 
-var db *pgx.Conn
-var err error
-
-func init() {
-	db, err = pgx.Connect(context.Background(), os.Getenv("DATABASE_URL"))
-	if err != nil {
-		log.Fatal(err)
-	}
-}
-
 // h_message is a handler which stores the conversation in the database
 func Message(c *gin.Context) {
-	if db.IsClosed() {
-		db, err = pgx.Connect(context.Background(), os.Getenv("DATABASE_URL"))
-		if err != nil {
-			c.JSON(500, gin.H{"error": err.Error()})
-			return
-		}
+	db, err := pgx.Connect(context.Background(), os.Getenv("DATABASE_URL"))
+	if err != nil {
+		c.JSON(500, gin.H{"error": err.Error()})
+		return
 	}
+	defer db.Close(context.Background())
+
 	var msg_instance typings.MessageInstance
-	err := c.BindJSON(&msg_instance)
+	err = c.BindJSON(&msg_instance)
 	if err != nil {
 		c.JSON(400, gin.H{"error": "Invalid JSON"})
 		return
@@ -60,8 +49,14 @@ func Message(c *gin.Context) {
 }
 
 func Reset(c *gin.Context) {
+	db, err := pgx.Connect(context.Background(), os.Getenv("DATABASE_URL"))
+	if err != nil {
+		c.JSON(500, gin.H{"error": err.Error()})
+		return
+	}
+	defer db.Close(context.Background())
 	// Delete the conversations table if it exists
-	_, err := db.Exec(context.Background(), `DROP TABLE IF EXISTS conversations`)
+	_, err = db.Exec(context.Background(), `DROP TABLE IF EXISTS conversations`)
 	if err != nil {
 		c.JSON(500, gin.H{"error": err.Error()})
 		return
@@ -77,8 +72,14 @@ func Reset(c *gin.Context) {
 }
 
 func Exit(c *gin.Context) {
+	db, err := pgx.Connect(context.Background(), os.Getenv("DATABASE_URL"))
+	if err != nil {
+		c.JSON(500, gin.H{"error": err.Error()})
+		return
+	}
+	defer db.Close(context.Background())
 	// Close the database connection
-	err := db.Close(context.Background())
+	err = db.Close(context.Background())
 	if err != nil {
 		c.JSON(500, gin.H{"error": err.Error()})
 	}
