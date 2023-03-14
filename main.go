@@ -8,6 +8,7 @@ import (
 
 	typings "github.com/acheong08/data_collector/internal/typings"
 	gin "github.com/gin-gonic/gin"
+	"github.com/joho/godotenv"
 
 	pgx "github.com/jackc/pgx/v5"
 )
@@ -16,6 +17,11 @@ var db *pgx.Conn
 var err error
 
 func init() {
+	// Source .env file
+	err = godotenv.Load()
+	if err != nil {
+		log.Fatal("Error loading .env file")
+	}
 	db, err = pgx.Connect(context.Background(), os.Getenv("DATABASE_URL"))
 	if err != nil {
 		log.Fatal(err)
