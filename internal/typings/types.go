@@ -7,7 +7,7 @@ type Message struct {
 }
 
 type MessageInstance struct {
-	Message Message `json:"messages"`
+	Message Message `json:"message"`
 	Id      string  `json:"id"`
 	User    string  `json:"user"`
 }
