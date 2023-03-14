@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"regexp"
 
 	typings "github.com/acheong08/data_collector/internal/typings"
 	gin "github.com/gin-gonic/gin"
@@ -37,7 +38,7 @@ func init() {
 	}
 	fmt.Printf("DB version=%s\n", version)
 	// Create the conversations table if it doesn't exist
-	_, err = db.Exec(context.Background(), `CREATE TABLE IF NOT EXISTS conversations ( id TEXT PRIMARY KEY, "user" VARCHAR(255), messages JSONB )`)
+	_, err = db.Exec(context.Background(), `CREATE TABLE IF NOT EXISTS conversations ( id TEXT PRIMARY KEY NOT NULL, "user" VARCHAR(255) NOT NULL, messages JSONB NOT NULL )`)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -72,13 +73,25 @@ func Collect(c *gin.Context) {
 	var conversation typings.Conversation
 	err := c.BindJSON(&conversation)
 	if err != nil {
-		c.JSON(400, gin.H{"error": err.Error()})
+		c.JSON(400, gin.H{"error": "Invalid JSON"})
+		return
+	}
+	// If any of the fields are empty, return an error
+	if conversation.Id == "" || conversation.User == "" || len(conversation.Messages) == 0 {
+		c.JSON(400, gin.H{"error": "Missing fields"})
 		return
 	}
 	// Store the conversation in the database
 	_, err = db.Exec(context.Background(), `INSERT INTO conversations (id, "user", messages) VALUES ($1, $2, $3)`, conversation.Id, conversation.User, conversation.Messages)
 	if err != nil {
-		c.JSON(500, gin.H{"error": err.Error()})
+		err_code := 500
+		err_string := err.Error()
+		// Regex check for duplicate key value violates unique constraint
+		if regexp.MustCompile(`duplicate key value violates unique constraint`).MatchString(err.Error()) {
+			err_code = 409
+			err_string = "Conversation already exists"
+		}
+		c.JSON(err_code, gin.H{"error": err_string})
 		return
 	}
 	c.JSON(200, gin.H{"message": "success"})
